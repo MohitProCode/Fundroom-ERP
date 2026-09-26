@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body { @apply bg-slate-950 text-slate-100; }
+button, input, select, textarea { font: inherit; }
+
+/* Dark theme contract for legacy module surfaces and dialogs. */
+.dark .bg-white { background-color: #0f172a !important; }
+.dark .bg-gray-50 { background-color: #020617 !important; }
+.dark .text-slate-950, .dark .text-slate-900 { color: #f8fafc !important; }
+.dark .text-slate-800, .dark .text-slate-700 { color: #cbd5e1 !important; }
+.dark .text-slate-600 { color: #94a3b8 !important; }
+.dark .border-slate-200, .dark .border-slate-100 { border-color: #334155 !important; }
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #334155 !important; }
+.dark [class*="bg-[#f7f8ff]"], .dark [class*="bg-[#f2f4ff]"], .dark [class*="bg-[#eef1ff]"] { background-color: #111c33 !important; }
+.dark [class*="bg-[#fff8ed]"] { background-color: #2a2115 !important; }
+.dark .hover\:bg-slate-50:hover { background-color: #172236 !important; }
+.dark .hover\:bg-gray-100:hover { background-color: #172236 !important; }
