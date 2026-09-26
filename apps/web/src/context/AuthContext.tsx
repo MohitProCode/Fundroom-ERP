@@ -20,14 +20,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function checkAuth() {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
+    if (api.hasSession()) {
       try {
         const userData = await api.get<User>('/auth/me');
         setUser(userData);
       } catch {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
+        api.logout();
       }
     }
     setIsLoading(false);

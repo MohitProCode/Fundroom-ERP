@@ -38,6 +38,8 @@ export interface QuotationItemCalculation {
 export interface QuotationTotals {
   subtotal: Decimal;
   totalDiscount: Decimal;
+  specialDiscountPercent: Decimal;
+  specialDiscountAmount: Decimal;
   totalGst: Decimal;
   grandTotal: Decimal;
   items: QuotationItemCalculation[];
@@ -89,7 +91,8 @@ export function calculateLineItem(
  * Calculate quotation totals
  */
 export function calculateQuotationTotals(
-  items: QuotationItemInput[]
+  items: QuotationItemInput[],
+  specialDiscountPercent: number | Decimal = 0
 ): QuotationTotals {
   const calculatedItems: QuotationItemCalculation[] = items.map((item) => ({
     productId: item.productId,
@@ -113,9 +116,19 @@ export function calculateQuotationTotals(
     grandTotal = grandTotal.plus(item.lineTotal);
   }
 
+  const specialPercent = new Decimal(specialDiscountPercent);
+  const taxableBeforeSpecial = subtotal.minus(totalDiscount);
+  const specialDiscountAmount = taxableBeforeSpecial.times(specialPercent).div(100).toDecimalPlaces(2);
+  const adjustedTaxable = taxableBeforeSpecial.minus(specialDiscountAmount);
+  const gstRatio = taxableBeforeSpecial.isZero() ? new Decimal(0) : adjustedTaxable.div(taxableBeforeSpecial);
+  totalGst = totalGst.times(gstRatio).toDecimalPlaces(2);
+  grandTotal = adjustedTaxable.plus(totalGst).toDecimalPlaces(2);
+
   return {
     subtotal: subtotal.toDecimalPlaces(2),
-    totalDiscount: totalDiscount.toDecimalPlaces(2),
+    totalDiscount: totalDiscount.plus(specialDiscountAmount).toDecimalPlaces(2),
+    specialDiscountPercent: specialPercent,
+    specialDiscountAmount,
     totalGst: totalGst.toDecimalPlaces(2),
     grandTotal: grandTotal.toDecimalPlaces(2),
     items: calculatedItems,

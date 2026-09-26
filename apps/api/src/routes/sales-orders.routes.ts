@@ -10,8 +10,8 @@ router.use(authenticate);
 
 router.get('/', requireSalesOrAdmin(), salesOrdersController.list.bind(salesOrdersController));
 router.get('/:id', requireSalesOrAdmin(), salesOrdersController.getById.bind(salesOrdersController));
-router.post('/from-quotation', requireSalesOrAdmin(), salesOrdersController.convertQuotation.bind(salesOrdersController));
+router.post('/from-quotation', requireAdmin(), salesOrdersController.convertQuotation.bind(salesOrdersController));
 router.post('/:id/confirm', requireAdmin(), salesOrdersController.confirm.bind(salesOrdersController));
-router.post('/:id/cancel', requireSalesOrAdmin(), salesOrdersController.cancel.bind(salesOrdersController));
+router.post('/:id/cancel', requireAdmin(), salesOrdersController.cancel.bind(salesOrdersController));
 
 export default router;

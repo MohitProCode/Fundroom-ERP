@@ -34,28 +34,34 @@ interface ApiResponse<T> {
 }
 
 class ApiClient {
+  private refreshPromise: Promise<boolean> | null = null;
+
   private getAuthToken(): string | null {
-    return localStorage.getItem('accessToken');
+    return sessionStorage.getItem('accessToken');
   }
 
   private setAuthToken(token: string | null): void {
     if (token) {
-      localStorage.setItem('accessToken', token);
+      sessionStorage.setItem('accessToken', token);
     } else {
-      localStorage.removeItem('accessToken');
+      sessionStorage.removeItem('accessToken');
     }
   }
 
   private getRefreshToken(): string | null {
-    return localStorage.getItem('refreshToken');
+    return sessionStorage.getItem('refreshToken');
   }
 
   private setRefreshToken(token: string | null): void {
     if (token) {
-      localStorage.setItem('refreshToken', token);
+      sessionStorage.setItem('refreshToken', token);
     } else {
-      localStorage.removeItem('refreshToken');
+      sessionStorage.removeItem('refreshToken');
     }
+  }
+
+  hasSession(): boolean {
+    return Boolean(this.getAuthToken());
   }
 
   async request<T>(
@@ -64,9 +70,9 @@ class ApiClient {
   ): Promise<T> {
     const token = this.getAuthToken();
 
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string> | undefined),
     };
 
     if (token) {
@@ -108,6 +114,17 @@ class ApiClient {
   }
 
   private async refreshAccessToken(): Promise<boolean> {
+    if (this.refreshPromise) return this.refreshPromise;
+
+    this.refreshPromise = this.rotateRefreshToken();
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  private async rotateRefreshToken(): Promise<boolean> {
     const refreshToken = this.getRefreshToken();
     if (!refreshToken) return false;
 

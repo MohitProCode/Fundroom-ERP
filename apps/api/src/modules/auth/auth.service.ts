@@ -1,15 +1,14 @@
-import { PrismaClient, User, UserRole } from '@prisma/client';
+import { Prisma, PrismaClient, User, UserRole } from '@prisma/client';
 import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
-import { AppError, ErrorCode, AuthenticationError, NotFoundError } from '../../shared/errors';
+import { ErrorCode, AuthenticationError } from '../../shared/errors';
 import { logger } from '../../shared/utils/logger';
 
 const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '15m';
-const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 
 export interface LoginInput {
   email: string;
@@ -77,42 +76,50 @@ export class AuthService {
    * Refresh access token
    */
   async refresh(token: string): Promise<RefreshResult> {
-    const storedToken = await prisma.refreshToken.findUnique({
-      where: { token },
-      include: { user: true },
-    });
+    const rotation = await prisma.$transaction(async (tx) => {
+      const storedToken = await tx.refreshToken.findUnique({
+        where: { token },
+        include: { user: true },
+      });
 
-    if (!storedToken) {
-      throw new AuthenticationError(ErrorCode.INVALID_TOKEN, 'Invalid refresh token');
-    }
+      if (!storedToken) {
+        throw new AuthenticationError(ErrorCode.INVALID_TOKEN, 'Invalid refresh token');
+      }
+      if (storedToken.revoked) {
+        throw new AuthenticationError(ErrorCode.TOKEN_REVOKED, 'Refresh token has been revoked');
+      }
+      if (storedToken.expiresAt < new Date()) {
+        throw new AuthenticationError(ErrorCode.TOKEN_EXPIRED, 'Refresh token has expired');
+      }
+      if (!storedToken.user.isActive) {
+        throw new AuthenticationError(ErrorCode.UNAUTHORIZED, 'Account is deactivated');
+      }
 
-    if (storedToken.revoked) {
-      throw new AuthenticationError(ErrorCode.TOKEN_REVOKED, 'Refresh token has been revoked');
-    }
+      // Conditional rotation makes concurrent refresh requests mutually exclusive.
+      const revoked = await tx.refreshToken.updateMany({
+        where: { id: storedToken.id, revoked: false },
+        data: { revoked: true },
+      });
+      if (revoked.count !== 1) {
+        throw new AuthenticationError(ErrorCode.TOKEN_REVOKED, 'Refresh token has already been used');
+      }
 
-    if (storedToken.expiresAt < new Date()) {
-      throw new AuthenticationError(ErrorCode.TOKEN_EXPIRED, 'Refresh token has expired');
-    }
+      const nextToken = uuidv4();
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+      await tx.refreshToken.create({
+        data: { token: nextToken, userId: storedToken.user.id, expiresAt },
+      });
 
-    if (!storedToken.user.isActive) {
-      throw new AuthenticationError(ErrorCode.UNAUTHORIZED, 'Account is deactivated');
-    }
+      return { user: storedToken.user, refreshToken: nextToken };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
-    // Revoke old token
-    await prisma.refreshToken.update({
-      where: { id: storedToken.id },
-      data: { revoked: true },
-    });
-
-    // Generate new tokens
-    const accessToken = this.generateAccessToken(storedToken.user);
-    const refreshToken = await this.createRefreshToken(storedToken.user.id);
-
-    await this.logAudit(storedToken.user.id, 'TOKEN_REFRESH', 'User', storedToken.user.id);
+    const accessToken = this.generateAccessToken(rotation.user);
+    await this.logAudit(rotation.user.id, 'TOKEN_REFRESH', 'User', rotation.user.id);
 
     return {
       accessToken,
-      refreshToken,
+      refreshToken: rotation.refreshToken,
     };
   }
 
@@ -145,7 +152,7 @@ export class AuthService {
       name: user.name,
     };
 
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN as jwt.SignOptions['expiresIn'] });
   }
 
   /**

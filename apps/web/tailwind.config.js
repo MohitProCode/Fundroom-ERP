@@ -23,4 +23,9 @@ export default {
     },
   },
   plugins: [],
+  safelist: [
+    'bg-cyan-400', 'bg-violet-400', 'bg-amber-400', 'bg-emerald-400', 'bg-rose-400',
+    'bg-cyan-400/10', 'bg-violet-400/10', 'bg-rose-400/10',
+    'text-cyan-300', 'text-violet-300', 'text-rose-300',
+  ],
 }

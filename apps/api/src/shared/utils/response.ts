@@ -69,10 +69,11 @@ export function errorResponse(
  */
 export interface PaginatedData<T> {
   items: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
+  meta?: { total: number; page: number; limit: number; totalPages: number };
 }
 
 export function paginatedResponse<T>(
@@ -80,9 +81,9 @@ export function paginatedResponse<T>(
   data: PaginatedData<T>
 ): void {
   successResponse(res, data.items, 200, {
-    page: data.page,
-    limit: data.limit,
-    total: data.total,
-    totalPages: data.totalPages,
+    page: data.page ?? data.meta?.page ?? 1,
+    limit: data.limit ?? data.meta?.limit ?? data.items.length,
+    total: data.total ?? data.meta?.total ?? data.items.length,
+    totalPages: data.totalPages ?? data.meta?.totalPages ?? 1,
   });
 }

@@ -99,6 +99,11 @@ export class SalesOrdersService {
    * Prevents duplicate conversion via database unique constraint
    */
   async convertQuotation(quotationId: string, userId: string): Promise<SalesOrder> {
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (actor?.role !== UserRole.ADMIN) {
+      throw new AuthorizationError('Only ADMIN can convert accepted quotations to sales orders');
+    }
+
     // Verify quotation exists and is accepted
     const quotation = await prisma.quotation.findUnique({
       where: { id: quotationId },
@@ -316,6 +321,11 @@ export class SalesOrdersService {
    * Releases reserved inventory if confirmed
    */
   async cancel(id: string, userId: string): Promise<SalesOrder> {
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (actor?.role !== UserRole.ADMIN) {
+      throw new AuthorizationError('Only ADMIN can cancel sales orders');
+    }
+
     return prisma.$transaction(async (tx) => {
       const order = await tx.salesOrder.findUnique({
         where: { id },

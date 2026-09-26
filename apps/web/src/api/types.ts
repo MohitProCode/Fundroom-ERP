@@ -21,7 +21,11 @@ export interface Customer {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  activities?: CustomerActivity[];
 }
+
+export type CustomerActivityType = 'CALL' | 'EMAIL' | 'MEETING' | 'TASK' | 'NOTE';
+export interface CustomerActivity { id: string; customerId: string; type: CustomerActivityType; subject: string; notes: string | null; dueAt: string | null; completedAt: string | null; createdBy: string; createdAt: string; updatedAt: string; }
 
 export interface Product {
   id: string;
@@ -77,6 +81,8 @@ export interface Quotation {
   notes: string | null;
   subtotal: string;
   totalDiscount: string;
+  specialDiscountPercent?: string;
+  specialDiscountAmount?: string;
   totalGst: string;
   grandTotal: string;
   createdBy: string;

@@ -10,7 +10,7 @@ const createDispatchSchema = z.object({
   notes: z.string().optional(),
   items: z.array(z.object({
     productId: z.string().uuid(),
-    quantity: z.number().positive(),
+    quantity: z.number().int().positive(),
   })).min(1, 'At least one item is required'),
 });
 

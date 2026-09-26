@@ -1,117 +1,24 @@
-import { useState } from 'react';
-import { useQuotations, useUpdateQuotationStatus, useConvertQuotation } from '../api/hooks';
+import { useMemo, useState } from 'react';
+import { useCustomers, useCreateQuotation, useProducts, useQuotations, useUpdateQuotationStatus, useConvertQuotation } from '../api/hooks';
 import { useAuth } from '../context/AuthContext';
+import { formatMoney } from '../lib/format';
 
-const statusColors: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-800',
-  SENT: 'bg-blue-100 text-blue-800',
-  ACCEPTED: 'bg-green-100 text-green-800',
-  REJECTED: 'bg-red-100 text-red-800',
-};
+type Line = { productId: string; quantity: string; unitPrice: string; discountPercent: string; gstPercent: string };
+const blankLine = (): Line => ({ productId: '', quantity: '', unitPrice: '', discountPercent: '0', gstPercent: '18' });
 
 export default function Quotations() {
-  const [page, setPage] = useState(1);
-  const { data, isLoading } = useQuotations(page);
-  const updateStatus = useUpdateQuotationStatus();
-  const convertQuotation = useConvertQuotation();
-  const { user } = useAuth();
-
-  if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
-  }
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Quotations</h2>
-      </div>
-
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Number
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Customer
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Grand Total
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Created
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {data?.items.map((quotation) => (
-              <tr key={quotation.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {quotation.quotationNumber}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {quotation.customer?.name || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[quotation.status]}`}>
-                    {quotation.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  ₹{Number(quotation.grandTotal).toLocaleString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(quotation.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 space-x-2">
-                  {quotation.status === 'DRAFT' && (
-                    <button
-                      onClick={() => updateStatus.mutate({ id: quotation.id, status: 'SENT' })}
-                      className="text-blue-600 hover:text-blue-900"
-                    >
-                      Send
-                    </button>
-                  )}
-                  {quotation.status === 'SENT' && (
-                    <>
-                      <button
-                        onClick={() => updateStatus.mutate({ id: quotation.id, status: 'ACCEPTED' })}
-                        className="text-green-600 hover:text-green-900"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={() => updateStatus.mutate({ id: quotation.id, status: 'REJECTED' })}
-                        className="text-red-600 hover:text-red-900 ml-2"
-                      >
-                        Reject
-                      </button>
-                    </>
-                  )}
-                  {quotation.status === 'ACCEPTED' && !quotation.salesOrder && (
-                    <button
-                      onClick={() => convertQuotation.mutate(quotation.id)}
-                      className="text-primary-600 hover:text-primary-900"
-                    >
-                      Convert to Order
-                    </button>
-                  )}
-                  {quotation.salesOrder && (
-                    <span className="text-gray-500">Order: {quotation.salesOrder.orderNumber}</span>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  const { user } = useAuth(); const quotations = useQuotations(1, 100); const customers = useCustomers(1, 100); const products = useProducts(1, 100); const create = useCreateQuotation(); const update = useUpdateQuotationStatus(); const convert = useConvertQuotation();
+  const [open, setOpen] = useState(false); const [customerId, setCustomerId] = useState(''); const [terms, setTerms] = useState(''); const [specialDiscountPercent, setSpecialDiscountPercent] = useState('0'); const [lines, setLines] = useState<Line[]>([blankLine()]);
+  const [search, setSearch] = useState(''); const [status, setStatus] = useState('ALL');
+  const items = useMemo(() => (quotations.data?.items ?? []).filter((item) => (status === 'ALL' || item.status === status) && (!search || `${item.quotationNumber} ${item.customer?.name}`.toLowerCase().includes(search.toLowerCase()))), [quotations.data, status, search]);
+  const preview = useMemo(() => lines.reduce((total, line) => { const base = Number(line.quantity || 0) * Number(line.unitPrice || 0); const lineDiscount = base * Number(line.discountPercent || 0) / 100; const special = (base - lineDiscount) * Number(specialDiscountPercent || 0) / 100; const taxable = base - lineDiscount - special; return { subtotal: total.subtotal + base, discount: total.discount + lineDiscount + special, gst: total.gst + taxable * Number(line.gstPercent || 0) / 100, total: total.total + taxable * (1 + Number(line.gstPercent || 0) / 100) }; }, { subtotal: 0, discount: 0, gst: 0, total: 0 }), [lines, specialDiscountPercent]);
+  const submit = (event: React.FormEvent) => { event.preventDefault(); create.mutate({ customerId, terms, specialDiscountPercent: Number(specialDiscountPercent || 0), validUntil: new Date(Date.now() + 30 * 86400000).toISOString(), items: lines.filter((line) => line.productId && Number(line.quantity) > 0 && Number(line.unitPrice) > 0).map((line) => ({ productId: line.productId, quantity: Math.round(Number(line.quantity)), unitPrice: Number(line.unitPrice), discountPercent: Number(line.discountPercent || 0), gstPercent: Number(line.gstPercent || 0) })) }, { onSuccess: () => { setOpen(false); setCustomerId(''); setTerms(''); setSpecialDiscountPercent('0'); setLines([blankLine()]); } }); };
+  if (quotations.isLoading) return <div className="animate-pulse text-slate-400">Loading quotation desk...</div>;
+  const quoteItems = quotations.data?.items ?? []; const pipeline = quoteItems.filter((item) => item.status !== 'REJECTED').reduce((sum, item) => sum + Number(item.grandTotal), 0);
+ return <div className="space-y-6"><header className="flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Commercial hub / pricing control</div><h1 className="text-3xl font-semibold tracking-tight text-slate-950">Quotations</h1><p className="mt-2 text-sm text-slate-500">Build controlled commercial proposals with transparent GST, line discounts, and management-approved special discounts.</p></div>{user?.role === 'SALES_USER' ? <button onClick={() => setOpen(true)} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white">+ New quotation</button> : <span className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm text-slate-500">Sales prepares quotations</span>}</header><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Kpi label="Active pipeline" value={formatMoney(pipeline)} note={`${quoteItems.filter((item) => item.status !== 'REJECTED').length} open quotations`} /><Kpi label="Awaiting approval" value={quoteItems.filter((item) => item.status === 'SENT').length} note="Admin decision required" /><Kpi label="Accepted" value={quoteItems.filter((item) => item.status === 'ACCEPTED').length} note="Ready for order conversion" /><Kpi label="Average discount" value={`${quoteItems.length ? (quoteItems.reduce((sum, item) => sum + Number(item.totalDiscount), 0) / quoteItems.length / Math.max(1, quoteItems.reduce((sum, item) => sum + Number(item.subtotal), 0) / quoteItems.length) * 100).toFixed(1) : '0.0'}%`} note="Line + special discount" /></div><section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap gap-3 border-b border-slate-100 p-4"><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search quotation or customer..." className="min-w-64 flex-1 rounded-lg border border-slate-200 bg-[#f7f8ff] px-3 py-2.5 text-sm" /><div className="flex gap-1 rounded-lg bg-[#f2f4ff] p-1">{['ALL', 'DRAFT', 'SENT', 'ACCEPTED', 'REJECTED'].map((item) => <button key={item} onClick={() => setStatus(item)} className={`rounded-md px-3 py-2 text-xs ${status === item ? 'bg-white font-semibold text-blue-700 shadow-sm' : 'text-slate-500'}`}>{item === 'ALL' ? 'All' : item[0] + item.slice(1).toLowerCase()}</button>)}</div></div><div className="overflow-x-auto"><table className="min-w-full"><thead className="bg-[#f7f8ff]"><tr>{['Quotation', 'Customer', 'Commercial value', 'Discount', 'GST', 'Workflow'].map((heading) => <th key={heading} className="px-5 py-3 text-left text-[11px] uppercase tracking-wide text-slate-400">{heading}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{items.map((quotation) => <tr key={quotation.id} className="hover:bg-slate-50"><td className="px-5 py-4"><p className="text-sm font-semibold text-blue-700">{quotation.quotationNumber}</p><p className="mt-1 text-xs text-slate-400">Created {new Date(quotation.createdAt).toLocaleDateString()}</p></td><td className="px-5 py-4 text-sm font-medium text-slate-800">{quotation.customer?.name || '-'}</td><td className="px-5 py-4 text-sm font-semibold text-slate-900">{formatMoney(quotation.grandTotal)}</td><td className="px-5 py-4 text-sm text-orange-700">{formatMoney(quotation.totalDiscount)}<span className="mt-1 block text-xs text-slate-400">{quotation.specialDiscountPercent ? `${quotation.specialDiscountPercent}% special` : 'Line discounts'}</span></td><td className="px-5 py-4 text-sm text-slate-700">{formatMoney(quotation.totalGst)}<span className="mt-1 block text-xs text-slate-400">Included in total</span></td><td className="px-5 py-4 text-sm">{quotation.status === 'DRAFT' && user?.role === 'SALES_USER' && <button onClick={() => update.mutate({ id: quotation.id, status: 'SENT' })} className="text-blue-700">Submit for approval</button>}{quotation.status === 'DRAFT' && user?.role === 'ADMIN' && <span className="text-xs text-slate-400">Awaiting sales submission</span>}{quotation.status === 'SENT' && user?.role === 'ADMIN' && <><button onClick={() => update.mutate({ id: quotation.id, status: 'ACCEPTED' })} className="mr-3 text-emerald-700">Approve</button><button onClick={() => update.mutate({ id: quotation.id, status: 'REJECTED' })} className="text-rose-600">Reject</button></>}{quotation.status === 'SENT' && user?.role === 'SALES_USER' && <span className="text-xs text-slate-400">Awaiting admin approval</span>}{quotation.status === 'ACCEPTED' && !quotation.salesOrder && user?.role === 'ADMIN' && <button onClick={() => convert.mutate(quotation.id)} className="text-blue-700">Convert to order</button>}{quotation.salesOrder && <span className="text-slate-500">Order {quotation.salesOrder.orderNumber}</span>}</td></tr>)}</tbody></table></div></section>{create.isError && <ErrorBanner message={create.error instanceof Error ? create.error.message : 'Quotation could not be created.'} />}{open && <QuotationModal customers={customers.data?.items ?? []} products={products.data?.items ?? []} customerId={customerId} setCustomerId={setCustomerId} lines={lines} setLines={setLines} terms={terms} setTerms={setTerms} specialDiscountPercent={specialDiscountPercent} setSpecialDiscountPercent={setSpecialDiscountPercent} preview={preview} pending={create.isPending} error={create.isError ? (create.error instanceof Error ? create.error.message : 'Unable to save quotation.') : ''} onSubmit={submit} onClose={() => setOpen(false)} />}</div>;
 }
+
+function Kpi({ label, value, note }: { label: string; value: string | number; note: string }) { return <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm text-slate-600">{label}</p><p className="mt-5 text-2xl font-semibold text-slate-950">{value}</p><p className="mt-1 text-xs text-slate-500">{note}</p></div>; }
+function ErrorBanner({ message }: { message: string }) { return <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{message}</div>; }
+function QuotationModal({ customers, products, customerId, setCustomerId, lines, setLines, terms, setTerms, specialDiscountPercent, setSpecialDiscountPercent, preview, pending, error, onSubmit, onClose }: { customers: { id: string; name: string }[]; products: { id: string; sku: string; name: string; unit?: string }[]; customerId: string; setCustomerId: (value: string) => void; lines: Line[]; setLines: (value: Line[]) => void; terms: string; setTerms: (value: string) => void; specialDiscountPercent: string; setSpecialDiscountPercent: (value: string) => void; preview: { subtotal: number; discount: number; gst: number; total: number }; pending: boolean; error: string; onSubmit: (event: React.FormEvent) => void; onClose: () => void }) { return <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/80 p-4"><form onSubmit={onSubmit} className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">Commercial proposal</p><h2 className="mt-1 text-xl font-semibold text-slate-100">Create quotation</h2><p className="mt-1 text-sm text-slate-400">All calculations are repeated and authorized by the backend.</p></div><button type="button" onClick={onClose} className="text-sm text-slate-400">Close</button></div><label className="mt-6 block text-sm font-medium text-slate-300">Customer<select required value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100"><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label><div className="mt-5 overflow-x-auto"><div className="mb-2 grid min-w-[720px] grid-cols-[1.5fr_100px_130px_100px_90px_32px] gap-2 text-[11px] uppercase tracking-wide text-slate-500"><span>Material</span><span>Whole quantity</span><span>Unit price</span><span>Line disc %</span><span>GST %</span><span /></div>{lines.map((line, index) => <div key={index} className="mt-2 grid min-w-[720px] grid-cols-[1.5fr_100px_130px_100px_90px_32px] gap-2"><select required value={line.productId} onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, productId: e.target.value } : item))} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"><option value="">Select product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.sku} - {product.name}</option>)}</select>{(['quantity', 'unitPrice', 'discountPercent', 'gstPercent'] as const).map((field) => <input key={field} required={field !== 'discountPercent'} min={field === 'quantity' ? 1 : 0} step={field === 'quantity' ? 1 : 0.001} type="number" value={line[field]} placeholder={field === 'unitPrice' ? 'Unit price' : field === 'quantity' ? 'Whole qty' : field === 'discountPercent' ? '0' : '18'} onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, [field]: e.target.value } : item))} className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100" />)}<button type="button" onClick={() => setLines(lines.filter((_, i) => i !== index).length ? lines.filter((_, i) => i !== index) : [blankLine()])} className="rounded-lg border border-slate-700 text-slate-400">-</button></div>)}</div><button type="button" onClick={() => setLines([...lines, blankLine()])} className="mt-3 text-sm font-medium text-cyan-300">+ Add material line</button><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_180px]"><textarea value={terms} onChange={(e) => setTerms(e.target.value)} placeholder="Payment terms, lead time, warranty, freight" className="h-24 rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100" /><label className="text-sm font-medium text-slate-300">Special discount %<input min="0" max="100" step="0.01" type="number" value={specialDiscountPercent} onChange={(e) => setSpecialDiscountPercent(e.target.value)} className="mt-2 w-full rounded-lg border border-orange-800 bg-orange-950/40 px-3 py-2.5 text-sm text-slate-100" /><span className="mt-1 block text-xs font-normal text-slate-500">Sales proposes; Admin approves.</span></label></div><div className="mt-5 grid grid-cols-2 gap-3 rounded-xl bg-slate-950 p-4 text-sm sm:grid-cols-4"><Summary label="Subtotal" value={formatMoney(preview.subtotal)} /><Summary label="Total discounts" value={formatMoney(preview.discount)} tone="orange" /><Summary label="GST" value={formatMoney(preview.gst)} /><Summary label="Grand total" value={formatMoney(preview.total)} tone="blue" /></div>{error && <ErrorBanner message={error} />}<div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300">Cancel</button><button disabled={pending} className="rounded-lg bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-slate-950">{pending ? 'Saving...' : 'Save draft quotation'}</button></div></form></div>; }
+function Summary({ label, value, tone }: { label: string; value: string; tone?: string }) { return <div><p className="text-xs text-slate-500">{label}</p><p className={`mt-1 font-semibold ${tone === 'orange' ? 'text-orange-700' : tone === 'blue' ? 'text-blue-700' : 'text-slate-900'}`}>{value}</p></div>; }

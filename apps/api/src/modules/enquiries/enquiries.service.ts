@@ -1,5 +1,5 @@
-import { PrismaClient, Enquiry, EnquiryStatus } from '@prisma/client';
-import { NotFoundError, BusinessRuleError, ErrorCode, StateTransitionError } from '../../shared/errors';
+import { PrismaClient, Enquiry, EnquiryStatus, UserRole } from '@prisma/client';
+import { NotFoundError, BusinessRuleError, ErrorCode, StateTransitionError, AuthorizationError } from '../../shared/errors';
 import { PaginationMeta } from '../../shared/types';
 import { generateEnquiryNumber } from '../../shared/utils/business-identifiers';
 
@@ -152,6 +152,14 @@ export class EnquiriesService {
     userId: string
   ): Promise<Enquiry> {
     const enquiry = await this.getById(id);
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+
+    if (newStatus === EnquiryStatus.QUOTED && actor?.role !== UserRole.SALES_USER) {
+      throw new AuthorizationError('Only SALES_USER users can move enquiries into quotation review');
+    }
+    if ((newStatus === EnquiryStatus.WON || newStatus === EnquiryStatus.LOST) && actor?.role !== UserRole.ADMIN) {
+      throw new AuthorizationError('Only ADMIN users can close enquiries as won or lost');
+    }
 
     if (!VALID_TRANSITIONS[enquiry.status].includes(newStatus)) {
       throw new StateTransitionError(

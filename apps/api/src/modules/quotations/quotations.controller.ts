@@ -12,9 +12,10 @@ const createQuotationSchema = z.object({
   validUntil: z.string().optional(),
   terms: z.string().optional(),
   notes: z.string().optional(),
+  specialDiscountPercent: z.number().min(0).max(100).optional(),
   items: z.array(z.object({
     productId: z.string().uuid(),
-    quantity: z.number().positive(),
+    quantity: z.number().int().positive(),
     unitPrice: z.number().positive(),
     discountPercent: z.number().min(0).max(100).optional(),
     gstPercent: z.number().min(0).max(100).optional(),

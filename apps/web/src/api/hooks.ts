@@ -9,6 +9,7 @@ import type {
   SalesOrder,
   Dispatch,
   PaginatedResponse,
+  CustomerActivity,
 } from './types';
 
 // Customers
@@ -38,6 +39,20 @@ export function useCreateCustomer() {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
   });
+}
+
+export function useCustomerActivities(customerId?: string) {
+  return useQuery({ queryKey: ['customer-activities', customerId], queryFn: () => api.get<CustomerActivity[]>(`/customers/${customerId}/activities`), enabled: !!customerId });
+}
+
+export function useCreateCustomerActivity() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: ({ customerId, type, subject, notes, dueAt }: { customerId: string; type: CustomerActivity['type']; subject: string; notes?: string; dueAt?: string }) => api.post<CustomerActivity>(`/customers/${customerId}/activities`, { type, subject, notes, dueAt }), onSuccess: (_data, variables) => { queryClient.invalidateQueries({ queryKey: ['customer-activities', variables.customerId] }); } });
+}
+
+export function useCompleteCustomerActivity() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: ({ customerId, activityId }: { customerId: string; activityId: string }) => api.patch<CustomerActivity>(`/customers/${customerId}/activities/${activityId}/complete`), onSuccess: (_data, variables) => { queryClient.invalidateQueries({ queryKey: ['customer-activities', variables.customerId] }); } });
 }
 
 // Products
@@ -139,6 +154,7 @@ export function useCreateQuotation() {
       validUntil?: string;
       terms?: string;
       notes?: string;
+      specialDiscountPercent?: number;
       items: {
         productId: string;
         quantity: number;

@@ -1,47 +1,9 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useProducts } from '../api/hooks';
 
 export default function Products() {
-  const [page, setPage] = useState(1);
-  const { data, isLoading } = useProducts(page);
-
-  if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
-  }
-
-  return (
-    <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Products</h2>
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">SKU</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {data?.items.map((product) => (
-              <tr key={product.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {product.sku}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {product.name}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {product.category || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {product.unit}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  const [search, setSearch] = useState(''); const products = useProducts(1, 100, search || undefined);
+  const items = useMemo(() => products.data?.items ?? [], [products.data]);
+  if (products.isLoading) return <div className="animate-pulse text-slate-400">Loading product master...</div>;
+  return <div className="space-y-6"><header className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">Master data / catalogue</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-100">Products</h1><p className="mt-2 text-sm text-slate-400">Product, SKU, category, and unit definitions used across enquiries, quotations, and stock.</p></div><div className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-3 text-right"><p className="text-xs text-slate-500">Active catalogue</p><p className="mt-1 text-xl font-semibold text-slate-100">{products.data?.meta.total ?? items.length}</p></div></header><section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-xl shadow-slate-950/20"><div className="border-b border-slate-800 p-4"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search SKU, product, or category..." className="w-full max-w-xl rounded-lg border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-600 focus:border-cyan-400/60" /></div><div className="overflow-x-auto"><table className="min-w-full"><thead className="bg-slate-950"><tr>{['SKU', 'Product name', 'Category', 'Stock unit', 'Status'].map((heading) => <th key={heading} className="px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{heading}</th>)}</tr></thead><tbody className="divide-y divide-slate-800">{items.map((product) => <tr key={product.id} className="transition hover:bg-slate-800/50"><td className="whitespace-nowrap px-6 py-4 text-sm font-semibold text-cyan-300">{product.sku}</td><td className="px-6 py-4"><p className="text-sm font-medium text-slate-100">{product.name}</p><p className="mt-1 max-w-md truncate text-xs text-slate-500">{product.description || 'No product description'}</p></td><td className="px-6 py-4 text-sm text-slate-300">{product.category || 'Uncategorised'}</td><td className="px-6 py-4 text-sm font-medium text-slate-200">{product.unit}</td><td className="px-6 py-4"><span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-1 text-[11px] font-semibold text-emerald-300">{product.isActive ? 'Active' : 'Inactive'}</span></td></tr>)}{!items.length && <tr><td colSpan={5} className="px-6 py-14 text-center text-sm text-slate-500">No products match this search.</td></tr>}</tbody></table></div></section></div>;
 }

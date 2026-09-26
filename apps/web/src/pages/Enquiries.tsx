@@ -1,121 +1,37 @@
-import { useState } from 'react';
-import { useEnquiries, useUpdateEnquiryStatus } from '../api/hooks';
+import { useMemo, useState } from 'react';
+import { useCustomers, useCreateEnquiry, useEnquiries, useProducts, useUpdateEnquiryStatus } from '../api/hooks';
+import { useAuth } from '../context/AuthContext';
+import type { Enquiry } from '../api/types';
+import { formatQuantity } from '../lib/format';
 
-const statusColors: Record<string, string> = {
-  NEW: 'bg-blue-100 text-blue-800',
-  QUOTED: 'bg-yellow-100 text-yellow-800',
-  WON: 'bg-green-100 text-green-800',
-  LOST: 'bg-red-100 text-red-800',
-};
+type Line = { productId: string; quantity: string };
+type Filter = 'ALL' | 'NEW' | 'QUOTED' | 'WON' | 'LOST';
+
+const statusClass: Record<string, string> = { NEW: 'bg-blue-50 text-blue-700 border-blue-100', QUOTED: 'bg-amber-50 text-amber-700 border-amber-100', WON: 'bg-emerald-50 text-emerald-700 border-emerald-100', LOST: 'bg-slate-100 text-slate-600 border-slate-200' };
 
 export default function Enquiries() {
-  const [page, setPage] = useState(1);
-  const { data, isLoading } = useEnquiries(page);
-  const updateStatus = useUpdateEnquiryStatus();
-
-  if (isLoading) {
-    return <div className="animate-pulse">Loading...</div>;
-  }
-
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Enquiries</h2>
-      </div>
-
-      <div className="bg-white shadow rounded-lg overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Number
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Customer
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Created
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {data?.items.map((enquiry) => (
-              <tr key={enquiry.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  {enquiry.enquiryNumber}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {enquiry.customer?.name || '-'}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[enquiry.status]}`}>
-                    {enquiry.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(enquiry.createdAt).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {enquiry.status === 'NEW' && (
-                    <button
-                      onClick={() => updateStatus.mutate({ id: enquiry.id, status: 'QUOTED' })}
-                      className="text-primary-600 hover:text-primary-900"
-                    >
-                      Mark Quoted
-                    </button>
-                  )}
-                  {enquiry.status === 'QUOTED' && (
-                    <>
-                      <button
-                        onClick={() => updateStatus.mutate({ id: enquiry.id, status: 'WON' })}
-                        className="text-green-600 hover:text-green-900 mr-3"
-                      >
-                        Won
-                      </button>
-                      <button
-                        onClick={() => updateStatus.mutate({ id: enquiry.id, status: 'LOST' })}
-                        className="text-red-600 hover:text-red-900"
-                      >
-                        Lost
-                      </button>
-                    </>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {data?.meta && data.meta.totalPages > 1 && (
-        <div className="mt-4 flex justify-center">
-          <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-3 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <span className="px-4 py-2 border border-gray-300 bg-white text-sm text-gray-700">
-              Page {page} of {data.meta.totalPages}
-            </span>
-            <button
-              onClick={() => setPage((p) => Math.min(data.meta.totalPages, p + 1))}
-              disabled={page === data.meta.totalPages}
-              className="px-3 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Next
-            </button>
-          </nav>
-        </div>
-      )}
-    </div>
-  );
+  const { user } = useAuth();
+  const enquiries = useEnquiries(1, 100); const customers = useCustomers(1, 100); const products = useProducts(1, 100); const create = useCreateEnquiry(); const update = useUpdateEnquiryStatus();
+  const [filter, setFilter] = useState<Filter>('ALL'); const [search, setSearch] = useState(''); const [selectedId, setSelectedId] = useState(''); const [open, setOpen] = useState(false);
+  const [customerId, setCustomerId] = useState(''); const [notes, setNotes] = useState(''); const [lines, setLines] = useState<Line[]>([{ productId: '', quantity: '' }]);
+  const allItems = enquiries.data?.items ?? [];
+  const visibleItems = useMemo(() => allItems.filter((item) => (filter === 'ALL' || item.status === filter) && (!search || `${item.enquiryNumber} ${item.customer?.name}`.toLowerCase().includes(search.toLowerCase()))), [allItems, filter, search]);
+  const selected = visibleItems.find((item) => item.id === selectedId) ?? visibleItems[0];
+  const submit = (event: React.FormEvent) => { event.preventDefault(); create.mutate({ customerId, notes, items: lines.filter((line) => line.productId && Number(line.quantity) > 0).map((line) => ({ productId: line.productId, quantity: Math.round(Number(line.quantity)) })) }, { onSuccess: () => { setOpen(false); setCustomerId(''); setNotes(''); setLines([{ productId: '', quantity: '' }]); } }); };
+  if (enquiries.isLoading) return <div className="animate-pulse text-slate-400">Loading commercial desk...</div>;
+  const counts = { ALL: allItems.length, NEW: allItems.filter((item) => item.status === 'NEW').length, QUOTED: allItems.filter((item) => item.status === 'QUOTED').length, WON: allItems.filter((item) => item.status === 'WON').length, LOST: allItems.filter((item) => item.status === 'LOST').length };
+  return <div className="space-y-6">
+    <header className="flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700"><span>Commercial desk</span><span className="text-slate-300">/</span><span className="text-slate-500">Q4 inflow pipeline</span></div><h1 className="text-3xl font-semibold tracking-tight text-slate-950">Customer enquiries</h1><p className="mt-2 text-sm text-slate-500">Review incoming procurement requests, verify material requirements, and issue formal quotations.</p></div><div className="flex gap-2"><button className="rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-600 shadow-sm">Export CSV</button><button onClick={() => setOpen(true)} className="rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-blue-700/20 hover:bg-blue-800">+ New enquiry</button></div></header>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Kpi label="Total inbound" value={counts.ALL} note={`${counts.NEW} awaiting review`} tone="blue" /><Kpi label="Under quotation" value={counts.QUOTED} note="Active commercial responses" tone="orange" /><Kpi label="Converted won" value={counts.WON} note="Ready for fulfilment" tone="green" /><Kpi label="Avg turnaround" value="3.4 hrs" note="Within 24h service target" tone="blue" /></div>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-3"><div className="relative min-w-64 flex-1"><span className="absolute left-3 top-2.5 text-slate-400">/</span><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customer, enquiry number, or product..." className="w-full rounded-lg border-0 bg-[#f2f4ff] py-2.5 pl-8 pr-3 text-sm text-slate-800 outline-none ring-1 ring-transparent focus:ring-blue-200" /></div><div className="flex flex-wrap gap-1 rounded-lg bg-[#f2f4ff] p-1">{(['ALL', 'NEW', 'QUOTED', 'WON', 'LOST'] as Filter[]).map((item) => <button key={item} onClick={() => setFilter(item)} className={`rounded-md px-3 py-2 text-xs font-medium ${filter === item ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>{item === 'ALL' ? 'All' : item[0] + item.slice(1).toLowerCase()} <span className="ml-1 text-slate-400">{counts[item]}</span></button>)}</div><button className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-500">Last 30 days v</button></div><div className="grid min-h-[540px] lg:grid-cols-[1.25fr_.9fr]"><div className="overflow-x-auto border-r border-slate-100"><div className="flex items-center justify-between bg-[#eef1ff] px-4 py-3"><div className="flex items-center gap-2"><h2 className="text-sm font-semibold text-slate-800">Active inflow queue</h2><span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-700">{visibleItems.length} showing</span></div><span className="text-xs text-slate-500">Auto-sync just now</span></div><table className="min-w-full"><thead className="border-b border-slate-100"><tr>{['RFQ #', 'Customer & location', 'Products preview', 'Target', 'Status'].map((heading) => <th key={heading} className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wide text-slate-400">{heading}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{visibleItems.map((item) => <QueueRow key={item.id} enquiry={item} selected={selected?.id === item.id} onClick={() => setSelectedId(item.id)} />)}{!visibleItems.length && <tr><td colSpan={5} className="px-4 py-12 text-center text-sm text-slate-400">No enquiries match these filters.</td></tr>}</tbody></table><div className="flex items-center justify-between bg-[#f7f8ff] px-4 py-3 text-xs text-slate-500">Showing {visibleItems.length} of {allItems.length} results <span>Page 1</span></div></div>
+      <div className="bg-white p-5">{selected ? <Detail enquiry={selected} userRole={user?.role} onStatus={(status) => update.mutate({ id: selected.id, status })} /> : <div className="grid h-full place-items-center text-sm text-slate-400">Select an enquiry to inspect details.</div>}</div></div></section>
+    {create.isError && <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{create.error instanceof Error ? create.error.message : 'Enquiry could not be created. Check the selected customer and material lines.'}</div>}
+    {update.isError && <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{update.error instanceof Error ? update.error.message : 'The enquiry status could not be updated.'}</div>}
+    {open && <EnquiryModal customers={customers.data?.items ?? []} products={products.data?.items ?? []} customerId={customerId} setCustomerId={setCustomerId} lines={lines} setLines={setLines} notes={notes} setNotes={setNotes} pending={create.isPending} onSubmit={submit} onClose={() => setOpen(false)} />}
+  </div>;
 }
+
+function Kpi({ label, value, note, tone }: { label: string; value: string | number; note: string; tone: string }) { const icon = tone === 'orange' ? '!' : tone === 'green' ? 'OK' : 'IN'; return <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between"><p className="text-sm text-slate-600">{label}</p><span className={`grid h-8 w-8 place-items-center rounded-lg text-[10px] font-bold ${tone === 'orange' ? 'bg-orange-50 text-orange-600' : tone === 'green' ? 'bg-emerald-50 text-emerald-600' : 'bg-blue-50 text-blue-700'}`}>{icon}</span></div><p className="mt-6 text-2xl font-semibold tracking-tight text-slate-950">{value}</p><p className="mt-1 text-xs text-slate-500">{note}</p></div>; }
+function QueueRow({ enquiry, selected, onClick }: { enquiry: Enquiry; selected: boolean; onClick: () => void }) { return <tr onClick={onClick} className={`cursor-pointer transition ${selected ? 'bg-[#eef1ff]' : 'hover:bg-slate-50'}`}><td className="px-4 py-4 text-sm font-semibold text-blue-700">{enquiry.enquiryNumber}</td><td className="max-w-36 px-4 py-4 text-sm font-medium text-slate-800">{enquiry.customer?.name || '-'}<span className="mt-1 block text-xs font-normal text-slate-400">{enquiry.customer?.city || 'Location pending'}</span></td><td className="max-w-44 px-4 py-4 text-sm text-slate-600">{enquiry.items?.[0]?.product?.name || 'Material requirement'}<span className="mt-1 block text-xs text-slate-400">{enquiry.items?.length || 0} requested line(s)</span></td><td className="whitespace-nowrap px-4 py-4 text-xs text-slate-500">Review queue<span className="mt-1 block text-slate-400">{new Date(enquiry.createdAt).toLocaleDateString()}</span></td><td className="px-4 py-4"><span className={`whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-semibold ${statusClass[enquiry.status]}`}>{enquiry.status === 'NEW' ? 'New review' : enquiry.status}</span></td></tr>; }
+function Detail({ enquiry, userRole, onStatus }: { enquiry: Enquiry; userRole?: string; onStatus: (status: string) => void }) { const totalLines = enquiry.items?.length || 0; return <div><div className="flex items-start justify-between"><div><div className="flex items-center gap-2"><span className="text-sm font-semibold text-blue-700">{enquiry.enquiryNumber}</span><span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${statusClass[enquiry.status]}`}>{enquiry.status}</span></div><h2 className="mt-2 text-xl font-semibold text-slate-950">{enquiry.customer?.name || 'Customer enquiry'}</h2></div><div className="flex gap-2 text-slate-400"><button title="Print" className="rounded-md border border-slate-200 px-2 py-1 text-xs">Print</button><button title="Share" className="rounded-md border border-slate-200 px-2 py-1 text-xs">Share</button></div></div><div className="mt-5 grid grid-cols-2 gap-3 rounded-xl bg-[#eef1ff] p-4 text-sm"><div><p className="text-xs text-slate-500">Contact official</p><p className="mt-1 font-medium text-slate-800">{enquiry.customer?.contactPerson || 'Not captured'}</p></div><div><p className="text-xs text-slate-500">Direct contact</p><p className="mt-1 font-medium text-slate-800">{enquiry.customer?.phone || enquiry.customer?.email || 'Not captured'}</p></div><div className="col-span-2"><p className="text-xs text-slate-500">Delivery location</p><p className="mt-1 text-slate-700">{[enquiry.customer?.city, enquiry.customer?.state].filter(Boolean).join(', ') || 'Location pending'}</p></div></div><div className="mt-7 flex items-center justify-between"><h3 className="font-semibold text-slate-900">Requested materials ({totalLines} lines)</h3><span className="text-xs text-slate-500">Created {new Date(enquiry.createdAt).toLocaleDateString()}</span></div><div className="mt-3 divide-y divide-slate-100 rounded-lg border border-slate-200">{enquiry.items?.map((line) => <div key={line.id} className="flex items-center justify-between gap-3 p-3"><div><p className="text-sm font-medium text-slate-800">{line.product?.name || 'Product'}</p><p className="mt-1 text-xs text-slate-500">{line.product?.sku || 'SKU'} - Requested quantity {formatQuantity(line.quantity, line.product?.unit)}</p></div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700">Requirement logged</span></div>)}</div>{enquiry.notes && <div className="mt-4 rounded-lg bg-[#fff8ed] p-4 text-sm text-slate-700"><span className="font-semibold text-orange-700">Customer note: </span>{enquiry.notes}</div>}<div className="mt-6 space-y-2">{enquiry.status === 'NEW' && userRole === 'SALES_USER' && <button onClick={() => onStatus('QUOTED')} className="w-full rounded-lg bg-blue-700 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-800">Mark ready for quotation</button>}{enquiry.status === 'NEW' && userRole === 'ADMIN' && <p className="rounded-lg bg-slate-100 px-4 py-3 text-xs text-slate-500">Awaiting sales review before quotation.</p>}{enquiry.status === 'QUOTED' && userRole === 'ADMIN' && <div className="flex gap-2"><button onClick={() => onStatus('WON')} className="flex-1 rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white">Mark won</button><button onClick={() => onStatus('LOST')} className="rounded-lg border border-rose-200 px-4 py-3 text-sm font-semibold text-rose-600">Close lost</button></div>}</div></div>; }
+function EnquiryModal({ customers, products, customerId, setCustomerId, lines, setLines, notes, setNotes, pending, onSubmit, onClose }: { customers: { id: string; name: string }[]; products: { id: string; sku: string; name: string }[]; customerId: string; setCustomerId: (value: string) => void; lines: Line[]; setLines: (value: Line[]) => void; notes: string; setNotes: (value: string) => void; pending: boolean; onSubmit: (event: React.FormEvent) => void; onClose: () => void }) { return <div className="fixed inset-0 z-30 flex items-center justify-center bg-slate-950/80 p-4"><form onSubmit={onSubmit} className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"><div className="flex items-start justify-between"><div><p className="text-xs font-semibold uppercase tracking-widest text-cyan-300">Commercial intake</p><h3 className="mt-1 text-xl font-semibold text-slate-100">New customer enquiry</h3></div><button type="button" onClick={onClose} className="text-sm text-slate-400">Close</button></div><label className="mt-6 block text-sm font-medium text-slate-300">Customer<select required value={customerId} onChange={(e) => setCustomerId(e.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100"><option value="">Select customer</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}</select></label><div className="mt-5"><p className="text-sm font-medium text-slate-300">Requested materials</p>{lines.map((line, index) => <div key={index} className="mt-2 flex gap-2"><select required value={line.productId} onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, productId: e.target.value } : item))} className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100"><option value="">Select product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.sku} - {product.name}</option>)}</select><input required min="1" step="1" type="number" value={line.quantity} onChange={(e) => setLines(lines.map((item, i) => i === index ? { ...item, quantity: e.target.value } : item))} placeholder="Whole qty" className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100" /></div>)}<button type="button" onClick={() => setLines([...lines, { productId: '', quantity: '' }])} className="mt-3 text-sm font-medium text-cyan-300">+ Add another material</button></div><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Specification, delivery requirement, or procurement note" className="mt-5 h-24 w-full rounded-lg border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100" /><div className="mt-6 flex justify-end gap-2"><button type="button" onClick={onClose} className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300">Cancel</button><button disabled={pending} className="rounded-lg bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950">{pending ? 'Creating...' : 'Create enquiry'}</button></div></form></div>; }

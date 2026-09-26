@@ -72,9 +72,36 @@ model Customer {
   enquiries    Enquiry[]
   quotations   Quotation[]
   salesOrders  SalesOrder[]
+  activities   CustomerActivity[]
 
   @@index([name])
   @@map("customers")
+}
+
+enum CustomerActivityType {
+  CALL
+  EMAIL
+  MEETING
+  TASK
+  NOTE
+}
+
+model CustomerActivity {
+  id          String               @id @default(uuid())
+  customerId  String
+  customer    Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type        CustomerActivityType
+  subject     String
+  notes       String?
+  dueAt       DateTime?
+  completedAt DateTime?
+  createdBy   String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([customerId, dueAt])
+  @@index([createdAt])
+  @@map("customer_activities")
 }
 
 model Product {
@@ -199,6 +226,8 @@ model Quotation {
   // Calculated totals (backend-authoritative)
   subtotal        Decimal         @default(0) @db.Decimal(14, 2)
   totalDiscount   Decimal         @default(0) @db.Decimal(14, 2)
+  specialDiscountPercent Decimal  @default(0) @db.Decimal(5, 2)
+  specialDiscountAmount  Decimal  @default(0) @db.Decimal(14, 2)
   totalGst        Decimal         @default(0) @db.Decimal(14, 2)
   grandTotal      Decimal         @default(0) @db.Decimal(14, 2)
 

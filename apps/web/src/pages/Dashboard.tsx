@@ -1,42 +1,28 @@
+import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { useCustomers, useEnquiries, useInventory, useQuotations, useSalesOrders } from '../api/hooks';
+
+const money = (value: number) => `INR ${Math.round(value).toLocaleString()}`;
+
 export default function Dashboard() {
-  return (
-    <div>
-      <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h2>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900">Enquiries</h3>
-          <p className="mt-2 text-3xl font-bold text-primary-600">-</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900">Quotations</h3>
-          <p className="mt-2 text-3xl font-bold text-primary-600">-</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900">Sales Orders</h3>
-          <p className="mt-2 text-3xl font-bold text-primary-600">-</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900">Total Revenue</h3>
-          <p className="mt-2 text-3xl font-bold text-green-600">-</p>
-        </div>
-      </div>
-      <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Quick Actions</h3>
-        <div className="flex space-x-4">
-          <a
-            href="/enquiries"
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
-          >
-            New Enquiry
-          </a>
-          <a
-            href="/quotations"
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
-          >
-            New Quotation
-          </a>
-        </div>
-      </div>
-    </div>
-  );
+  const { user } = useAuth();
+  const customers = useCustomers(1, 100); const enquiries = useEnquiries(1, 100); const quotations = useQuotations(1, 100); const orders = useSalesOrders(1, 100); const inventory = useInventory(1, 100);
+  const quoteItems = quotations.data?.items ?? []; const orderItems = orders.data?.items ?? []; const enquiryItems = enquiries.data?.items ?? []; const stockItems = inventory.data?.items ?? [];
+  const pipeline = useMemo(() => quoteItems.filter((item) => item.status !== 'REJECTED').reduce((sum, item) => sum + Number(item.grandTotal), 0), [quoteItems]);
+  const reserved = stockItems.reduce((sum, item) => sum + Number(item.reservedQuantity), 0); const physical = stockItems.reduce((sum, item) => sum + Number(item.physicalQuantity), 0); const lowStock = stockItems.filter((item) => Number(item.availableQuantity) < 10);
+  const pendingApproval = quoteItems.filter((item) => item.status === 'SENT').length; const openOrders = orderItems.filter((item) => !['DISPATCHED', 'CANCELLED'].includes(item.status)).length;
+  const stages = [{ label: 'Enquiries', value: enquiryItems.length, tone: 'bg-cyan-400' }, { label: 'Quotations', value: quoteItems.length, tone: 'bg-violet-400' }, { label: 'Open orders', value: openOrders, tone: 'bg-amber-400' }, { label: 'Dispatched', value: orderItems.filter((item) => item.status === 'DISPATCHED').length, tone: 'bg-emerald-400' }];
+  const maxStage = Math.max(...stages.map((stage) => stage.value), 1);
+  return <div className="space-y-7">
+    <div className="flex flex-wrap items-end justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-cyan-300"><span>Operations cockpit</span><span className="text-slate-700">/</span><span className="text-slate-500">Live overview</span></div><h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">Good morning, {user?.name?.split(' ')[0] || 'team'}</h1><p className="mt-2 max-w-2xl text-sm text-slate-400">A single view of demand, commercial commitments, and material exposure across Pune Works.</p></div><div className="flex gap-2"><Link to="/enquiries" className="rounded-lg border border-slate-700 px-4 py-2.5 text-sm text-slate-300 hover:border-cyan-400/60">Review demand</Link><Link to="/manufacturing" className="rounded-lg bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 hover:bg-cyan-300">Open control board</Link></div></div>
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="Commercial pipeline" value={money(pipeline)} note={`${quoteItems.length} active quotations`} accent="cyan" /><Metric label="Pending approval" value={pendingApproval.toString()} note="Quotes waiting for admin decision" accent="violet" /><Metric label="Open fulfilment" value={openOrders.toString()} note={`${orderItems.filter((item) => item.status === 'CONFIRMED').length} inventory reserved`} accent="amber" /><Metric label="Available stock" value={physical ? `${Math.round((1 - reserved / physical) * 100)}%` : '0%'} note={`${reserved.toLocaleString()} units reserved`} accent={lowStock.length ? 'rose' : 'emerald'} /> </section>
+    <div className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]"><section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-2xl shadow-slate-950/20"><div className="flex items-start justify-between"><div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Demand conversion</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Commercial flow</h2></div><span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs text-emerald-300">Live data</span></div><div className="mt-8 space-y-5">{stages.map((stage) => <div key={stage.label} className="grid grid-cols-[115px_1fr_45px] items-center gap-3 text-sm"><span className="text-slate-400">{stage.label}</span><div className="h-3 overflow-hidden rounded-full bg-slate-800"><div className={`h-full rounded-full ${stage.tone} transition-all`} style={{ width: `${Math.max(7, (stage.value / maxStage) * 100)}%` }} /></div><span className="text-right font-semibold text-slate-100">{stage.value}</span></div>)}</div><div className="mt-8 grid gap-3 border-t border-slate-800 pt-5 sm:grid-cols-3"><MiniStat label="Customer base" value={customers.data?.meta.total || 0} /><MiniStat label="New / review" value={enquiryItems.filter((item) => item.status === 'NEW').length} /><MiniStat label="Conversion rate" value={enquiryItems.length ? `${Math.round((enquiryItems.filter((item) => item.status === 'WON').length / enquiryItems.length) * 100)}%` : '0%'} /></div></section>
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5"><div className="flex items-center justify-between"><div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Material watch</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Stock exposure</h2></div><Link to="/inventory" className="text-xs text-cyan-300">View all</Link></div><div className="mt-5 space-y-4">{(lowStock.length ? lowStock : stockItems.slice(0, 4)).map((item) => { const available = Number(item.availableQuantity); const total = Number(item.physicalQuantity) || 1; return <div key={item.id}><div className="flex justify-between gap-3 text-sm"><span className="truncate text-slate-300">{item.product.name}</span><span className={available < 10 ? 'text-rose-300' : 'text-emerald-300'}>{available.toLocaleString()} free</span></div><div className="mt-2 h-1.5 rounded-full bg-slate-800"><div className={`h-full rounded-full ${available < 10 ? 'bg-rose-400' : 'bg-emerald-400'}`} style={{ width: `${Math.min(100, (available / total) * 100)}%` }} /></div><p className="mt-1 text-[11px] text-slate-600">{Number(item.reservedQuantity).toLocaleString()} reserved of {total.toLocaleString()} physical</p></div> })}{!stockItems.length && <p className="text-sm text-slate-500">Inventory data is not available.</p>}</div></section></div>
+    <section className="rounded-2xl border border-slate-800 bg-slate-900/80"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-5 py-4"><div><p className="text-[11px] uppercase tracking-[0.16em] text-slate-500">Work queue</p><h2 className="mt-1 text-lg font-semibold text-slate-100">Needs attention</h2></div><div className="flex gap-2"><Link to="/quotations" className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-300">Quotation approvals</Link><Link to="/customers" className="rounded-md border border-slate-700 px-3 py-1.5 text-xs text-slate-300">Customer 360</Link></div></div><div className="grid divide-y divide-slate-800 sm:grid-cols-3 sm:divide-x sm:divide-y-0"><Queue title="Approval queue" count={pendingApproval} copy="Sent quotations need an admin decision." href="/quotations" tone="violet" /><Queue title="Demand review" count={enquiryItems.filter((item) => item.status === 'NEW').length} copy="New customer requirements waiting for action." href="/enquiries" tone="cyan" /><Queue title="Material alerts" count={lowStock.length} copy="Items with less than 10 units available." href="/inventory" tone="rose" /></div></section>
+  </div>;
 }
+
+function Metric({ label, value, note, accent }: { label: string; value: string; note: string; accent: string }) { return <div className="relative overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 p-5"><div className={`absolute inset-x-0 top-0 h-0.5 bg-${accent}-400`} /><p className="text-xs text-slate-500">{label}</p><p className="mt-3 text-2xl font-semibold tracking-tight text-slate-100">{value}</p><p className="mt-1 text-xs text-slate-500">{note}</p></div>; }
+function MiniStat({ label, value }: { label: string; value: string | number }) { return <div><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-lg font-semibold text-slate-200">{value}</p></div>; }
+function Queue({ title, count, copy, href, tone }: { title: string; count: number; copy: string; href: string; tone: string }) { return <Link to={href} className="group p-5 transition hover:bg-slate-800/40"><div className="flex items-center justify-between"><span className={`grid h-9 w-9 place-items-center rounded-lg bg-${tone}-400/10 text-sm font-semibold text-${tone}-300`}>{count}</span><span className="text-slate-600 transition group-hover:translate-x-1 group-hover:text-cyan-300">&gt;</span></div><h3 className="mt-4 text-sm font-medium text-slate-200">{title}</h3><p className="mt-1 text-xs leading-5 text-slate-500">{copy}</p></Link>; }

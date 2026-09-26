@@ -42,12 +42,13 @@ export function authenticate(
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as AuthenticatedRequest['user'] & {
+        sub: string;
         iat: number;
         exp: number;
       };
 
       req.user = {
-        id: decoded.id,
+        id: decoded.sub,
         email: decoded.email,
         role: decoded.role,
         name: decoded.name,

@@ -1,5 +1,5 @@
-import { PrismaClient, Quotation, QuotationStatus, EnquiryStatus } from '@prisma/client';
-import { NotFoundError, BusinessRuleError, ErrorCode, StateTransitionError, DuplicateResourceError } from '../../shared/errors';
+import { PrismaClient, Quotation, QuotationStatus, EnquiryStatus, UserRole } from '@prisma/client';
+import { NotFoundError, BusinessRuleError, ErrorCode, StateTransitionError, DuplicateResourceError, AuthorizationError } from '../../shared/errors';
 import { PaginationMeta } from '../../shared/types';
 import { generateQuotationNumber } from '../../shared/utils/business-identifiers';
 import { calculateQuotationTotals, QuotationItemInput } from './quotation-calculator';
@@ -12,6 +12,7 @@ export interface CreateQuotationInput {
   validUntil?: string;
   terms?: string;
   notes?: string;
+  specialDiscountPercent?: number;
   items: Array<{
     productId: string;
     quantity: number;
@@ -96,6 +97,11 @@ export class QuotationsService {
   }
 
   async create(data: CreateQuotationInput, userId: string): Promise<Quotation> {
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (actor?.role !== UserRole.SALES_USER) {
+      throw new AuthorizationError('Only SALES_USER users can prepare quotations');
+    }
+
     // Verify customer exists
     const customer = await prisma.customer.findUnique({
       where: { id: data.customerId },
@@ -140,12 +146,14 @@ export class QuotationsService {
         unitPrice: item.unitPrice,
         discountPercent: item.discountPercent,
         gstPercent: item.gstPercent,
-      }))
+      })),
+      data.specialDiscountPercent ?? 0
     );
 
     const quotationNumber = await generateQuotationNumber();
 
-    const quotation = await prisma.quotation.create({
+    const quotation = await prisma.$transaction(async (tx) => {
+      const quotation = await tx.quotation.create({
       data: {
         quotationNumber,
         enquiryId: data.enquiryId,
@@ -156,6 +164,8 @@ export class QuotationsService {
         createdBy: userId,
         subtotal: totals.subtotal,
         totalDiscount: totals.totalDiscount,
+        specialDiscountPercent: totals.specialDiscountPercent,
+        specialDiscountAmount: totals.specialDiscountAmount,
         totalGst: totals.totalGst,
         grandTotal: totals.grandTotal,
         items: {
@@ -181,13 +191,16 @@ export class QuotationsService {
       },
     });
 
-    // Update enquiry status if linked
-    if (data.enquiryId) {
-      await prisma.enquiry.update({
-        where: { id: data.enquiryId },
-        data: { status: EnquiryStatus.QUOTED },
-      });
-    }
+      // Update the linked pipeline in the same commit as the quotation.
+      if (data.enquiryId) {
+        await tx.enquiry.update({
+          where: { id: data.enquiryId },
+          data: { status: EnquiryStatus.QUOTED },
+        });
+      }
+
+      return quotation;
+    });
 
     await this.logAudit(userId, 'QUOTATION_CREATED', 'Quotation', quotation.id, {
       quotationNumber: quotation.quotationNumber,
@@ -205,6 +218,14 @@ export class QuotationsService {
   ): Promise<Quotation> {
     const quotation = await this.getById(id);
 
+    const actor = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    if (newStatus === QuotationStatus.SENT && actor?.role !== UserRole.SALES_USER) {
+      throw new AuthorizationError('Only SALES_USER users can submit quotations for approval');
+    }
+    if ((newStatus === QuotationStatus.ACCEPTED || newStatus === QuotationStatus.REJECTED) && actor?.role !== UserRole.ADMIN) {
+      throw new AuthorizationError('Only ADMIN users can approve or reject quotations');
+    }
+
     if (!VALID_TRANSITIONS[quotation.status].includes(newStatus)) {
       throw new StateTransitionError(
         `Cannot transition quotation from ${quotation.status} to ${newStatus}`,
@@ -216,18 +237,22 @@ export class QuotationsService {
       );
     }
 
-    const updated = await prisma.quotation.update({
-      where: { id },
-      data: { status: newStatus },
-    });
-
-    // Update enquiry status if quotation is accepted/won
-    if (newStatus === QuotationStatus.ACCEPTED && quotation.enquiryId) {
-      await prisma.enquiry.update({
-        where: { id: quotation.enquiryId },
-        data: { status: EnquiryStatus.WON },
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.quotation.update({
+        where: { id },
+        data: { status: newStatus },
       });
-    }
+
+      // Keep the commercial and enquiry pipelines in the same commit.
+      if (newStatus === QuotationStatus.ACCEPTED && quotation.enquiryId) {
+        await tx.enquiry.update({
+          where: { id: quotation.enquiryId },
+          data: { status: EnquiryStatus.WON },
+        });
+      }
+
+      return result;
+    });
 
     const action = newStatus === QuotationStatus.ACCEPTED
       ? 'QUOTATION_ACCEPTED'
