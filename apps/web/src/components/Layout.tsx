@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const groups = [
-  { label: 'Commercial', items: [{ to: '/enquiries', label: 'Enquiries', mark: 'EN' }, { to: '/quotations', label: 'Quotations', mark: 'QT' }, { to: '/sales-orders', label: 'Sales orders', mark: 'SO' }] },
+  { label: 'Commercial', items: [{ to: '/enquiries', label: 'Enquiries', mark: 'EN' }, { to: '/quotations', label: 'Quotations', mark: 'QT' }, { to: '/sales-orders', label: 'Sales orders', mark: 'SO' }, { to: '/dispatches', label: 'Dispatches', mark: 'DS' }] },
   { label: 'Operations', items: [{ to: '/manufacturing', label: 'Manufacturing', mark: 'MO' }, { to: '/inventory', label: 'Inventory stock', mark: 'IV' }] },
   { label: 'Master data', items: [{ to: '/customers', label: 'Customers', mark: 'CU' }, { to: '/products', label: 'Products', mark: 'PR' }] },
 ];

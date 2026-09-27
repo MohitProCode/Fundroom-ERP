@@ -1,0 +1,88 @@
+{
+  "info": {
+    "name": "Fundroom ERP API - Automated Tests",
+    "description": "Run in order after starting the API and seeding the database. Requests capture IDs and tokens automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "serverUrl", "value": "http://localhost:3000" },
+    { "key": "baseUrl", "value": "http://localhost:3000/api/v1" }
+  ],
+  "item": [
+    {
+      "name": "01 Health",
+      "request": { "method": "GET", "header": [], "url": "{{serverUrl}}/health" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('API is healthy', function () { pm.expect(pm.response.code).to.eql(200); });"] } }]
+    },
+    {
+      "name": "02 Admin Login",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}" }, "url": "{{baseUrl}}/auth/login" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Admin login succeeds', function () { pm.expect(pm.response.code).to.eql(200); });", "const json = pm.response.json();", "pm.environment.set('adminToken', json.data.accessToken);"] } }]
+    },
+    {
+      "name": "03 Sales Login",
+      "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{salesEmail}}\",\n  \"password\": \"{{salesPassword}}\"\n}" }, "url": "{{baseUrl}}/auth/login" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Sales login succeeds', function () { pm.expect(pm.response.code).to.eql(200); });", "const json = pm.response.json();", "pm.environment.set('salesToken', json.data.accessToken);"] } }]
+    },
+    {
+      "name": "04 List Products and Capture Product",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{salesToken}}" }], "url": "{{baseUrl}}/products?page=1&limit=10" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Products list succeeds', function () { pm.expect(pm.response.code).to.eql(200); });", "const json = pm.response.json();", "pm.expect(json.data.length).to.be.above(0);", "pm.environment.set('productId', json.data[0].id);"] } }]
+    },
+    {
+      "name": "05 List Customers and Capture Customer",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{salesToken}}" }], "url": "{{baseUrl}}/customers?page=1&limit=10" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Customers list succeeds', function () { pm.expect(pm.response.code).to.eql(200); });", "const json = pm.response.json();", "pm.expect(json.data.length).to.be.above(0);", "pm.environment.set('customerId', json.data[0].id);"] } }]
+    },
+    {
+      "name": "06 Create Enquiry",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{salesToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"customerId\": \"{{customerId}}\",\n  \"notes\": \"Postman automated enquiry\",\n  \"items\": [{ \"productId\": \"{{productId}}\", \"quantity\": 1 }]\n}" }, "url": "{{baseUrl}}/enquiries" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Enquiry is created', function () { pm.expect(pm.response.code).to.eql(201); });", "pm.environment.set('enquiryId', pm.response.json().data.id);"] } }]
+    },
+    {
+      "name": "07 Create Draft Quotation",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{salesToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"enquiryId\": \"{{enquiryId}}\",\n  \"customerId\": \"{{customerId}}\",\n  \"validUntil\": \"2030-12-31T00:00:00.000Z\",\n  \"items\": [{\n    \"productId\": \"{{productId}}\",\n    \"quantity\": 1,\n    \"unitPrice\": 100,\n    \"discountPercent\": 10,\n    \"gstPercent\": 18\n  }]\n}" }, "url": "{{baseUrl}}/quotations" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Quotation is created as draft', function () { pm.expect(pm.response.code).to.eql(201); pm.expect(pm.response.json().data.status).to.eql('DRAFT'); });", "pm.environment.set('quotationId', pm.response.json().data.id);"] } }]
+    },
+    {
+      "name": "08 Verify Quotation Total",
+      "request": { "method": "GET", "header": [{ "key": "Authorization", "value": "Bearer {{salesToken}}" }], "url": "{{baseUrl}}/quotations/{{quotationId}}" },
+      "event": [{ "listen": "test", "script": { "exec": ["const quote = pm.response.json().data;", "pm.test('Quotation total is backend calculated', function () { pm.expect(pm.response.code).to.eql(200); pm.expect(Number(quote.subtotal)).to.eql(100); pm.expect(Number(quote.totalDiscount)).to.eql(10); pm.expect(Number(quote.totalGst)).to.eql(16.2); pm.expect(Number(quote.grandTotal)).to.eql(106.2); });"] } }]
+    },
+    {
+      "name": "09 Submit Quotation",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{salesToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"status\": \"SENT\" }" }, "url": "{{baseUrl}}/quotations/{{quotationId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Quotation submitted', function () { pm.expect(pm.response.code).to.eql(200); pm.expect(pm.response.json().data.status).to.eql('SENT'); });"] } }]
+    },
+    {
+      "name": "10 Approve Quotation",
+      "request": { "method": "PATCH", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"status\": \"ACCEPTED\" }" }, "url": "{{baseUrl}}/quotations/{{quotationId}}/status" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Quotation approved', function () { pm.expect(pm.response.code).to.eql(200); pm.expect(pm.response.json().data.status).to.eql('ACCEPTED'); });"] } }]
+    },
+    {
+      "name": "11 Convert Quotation to Sales Order",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"quotationId\": \"{{quotationId}}\" }" }, "url": "{{baseUrl}}/sales-orders/from-quotation" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Sales order is created', function () { pm.expect(pm.response.code).to.eql(201); });", "pm.environment.set('salesOrderId', pm.response.json().data.id);"] } }]
+    },
+    {
+      "name": "12 Duplicate Conversion Is Rejected",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"quotationId\": \"{{quotationId}}\" }" }, "url": "{{baseUrl}}/sales-orders/from-quotation" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Duplicate sales order is rejected', function () { pm.expect([400, 409, 422]).to.include(pm.response.code); });"] } }]
+    },
+    {
+      "name": "13 Unauthorized Dispatch Attempt",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{salesToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"salesOrderId\": \"{{salesOrderId}}\", \"items\": [{ \"productId\": \"{{productId}}\", \"quantity\": 1 }] }" }, "url": "{{baseUrl}}/dispatches" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Unauthorized dispatch is rejected', function () { pm.expect(pm.response.code).to.eql(403); });"] } }]
+    },
+    {
+      "name": "14 Confirm Sales Order",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }], "url": "{{baseUrl}}/sales-orders/{{salesOrderId}}/confirm" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Sales order confirmation succeeds', function () { pm.expect(pm.response.code).to.eql(200); });"] } }]
+    },
+    {
+      "name": "15 Create Dispatch",
+      "request": { "method": "POST", "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }, { "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{ \"salesOrderId\": \"{{salesOrderId}}\", \"notes\": \"Postman dispatch\", \"items\": [{ \"productId\": \"{{productId}}\", \"quantity\": 1 }] }" }, "url": "{{baseUrl}}/dispatches" },
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('Dispatch is created', function () { pm.expect(pm.response.code).to.eql(201); });"] } }]
+    }
+  ]
+}

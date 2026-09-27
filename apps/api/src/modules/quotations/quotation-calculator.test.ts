@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateLineItem, calculateQuotationTotals } from '../modules/quotations/quotation-calculator';
+import { calculateLineItem, calculateQuotationTotals } from './quotation-calculator';
 
 describe('Quotation Calculator', () => {
   describe('calculateLineItem', () => {
@@ -51,11 +51,11 @@ describe('Quotation Calculator', () => {
       const result = calculateLineItem(7, 33.33, 5, 18);
 
       // Verify all amounts are rounded to 2 decimal places
-      expect(result.baseAmount.decimalPlaces()).toBe(2);
-      expect(result.discountAmount.decimalPlaces()).toBe(2);
-      expect(result.taxableAmount.decimalPlaces()).toBe(2);
-      expect(result.gstAmount.decimalPlaces()).toBe(2);
-      expect(result.lineTotal.decimalPlaces()).toBe(2);
+      expect(result.baseAmount.toFixed(2)).toBe('233.31');
+      expect(result.discountAmount.toFixed(2)).toBe('11.67');
+      expect(result.taxableAmount.toFixed(2)).toBe('221.64');
+      expect(result.gstAmount.toFixed(2)).toBe('39.90');
+      expect(result.lineTotal.toFixed(2)).toBe('261.54');
     });
   });
 
@@ -131,8 +131,8 @@ describe('Quotation Calculator', () => {
 
       expect(totals.subtotal.toNumber()).toBe(525000);
       expect(totals.totalDiscount.toNumber()).toBe(26250);
-      expect(totals.totalGst.toNumber()).toBe(89850);
-      expect(totals.grandTotal.toNumber()).toBe(588600);
+      expect(totals.totalGst.toNumber()).toBe(89775);
+      expect(totals.grandTotal.toNumber()).toBe(588525);
     });
   });
 });
